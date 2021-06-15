@@ -13,13 +13,13 @@ Encoding: UTF-8
 LazyData: true
 URL: https://gitlab.com/gwrc-esci/escir
 Depends: 
-  R (>= 4.1.0),
-  rlang (>= 0.4.11),
-  tidyr (>= 1.1.3),
+  R (>= 4.1.0)
 Imports:
   methods,
   stats,
   dplyr (>= 1.0.6),
+  tidyr (>= 1.1.3),
+  rlang (>= 0.4.11),
   xml2 (>= 1.3.2),
   crayon (>= 1.4.1),
   magrittr,

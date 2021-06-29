@@ -12,6 +12,8 @@
 #' @param container manually specify html table layout for dataframe
 #' @param cols_to_hide character vector of column names to suppress from output.
 #' @param cols_to_left_align character vector of column names to left align
+#' @param cols_to_fix_order parse character column to numeric for table sorting
+#'   (i.e. when a column has detection limits or states appended)
 #' @param cols_nonsortable character vector of column names to disable sorting
 #'   buttons
 #' @param col_widths named list or vector of column name = width, i.e.
@@ -75,6 +77,7 @@ escir_datatable <- function(d,
                             container,
                             cols_to_hide = c(),
                             cols_to_left_align = c(),
+                            cols_to_fix_order = c(),
                             cols_nonsortable = c(),
                             col_widths = list(),
                             col_colours = list(),
@@ -197,6 +200,29 @@ escir_datatable <- function(d,
   } else {
     # just returns table if no colours to assign
     colour_cells <- identity
+  }
+
+  # fix sorting on string value columns if any
+  if (length(cols_to_fix_order) > 0) {
+    col_list <- list()
+    for (column_name in names(d_raw)) {
+      if (column_name %in% cols_to_fix_order) {
+        col_list <-
+          c(col_list,
+            list(list(title = column_name,
+                      type = 'fix-order')))
+      } else if (column_name == 'Plan target') {
+        col_list <-
+          c(col_list,
+            list(list(title = column_name,
+                      type = 'plan-order')))
+      } else {
+        col_list <-
+          c(col_list,
+            list(list(title = column_name)))
+      }
+    }
+    dt_options$columns <- col_list
   }
 
   # output using original input data

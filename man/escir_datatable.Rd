@@ -12,6 +12,7 @@ escir_datatable(
   container,
   cols_to_hide = c(),
   cols_to_left_align = c(),
+  cols_to_fix_order = c(),
   cols_nonsortable = c(),
   col_widths = list(),
   col_colours = list(),
@@ -34,6 +35,9 @@ table}
 \item{cols_to_hide}{character vector of column names to suppress from output.}
 
 \item{cols_to_left_align}{character vector of column names to left align}
+
+\item{cols_to_fix_order}{parse character column to numeric for table sorting
+(i.e. when a column has detection limits or states appended)}
 
 \item{cols_nonsortable}{character vector of column names to disable sorting
 buttons}

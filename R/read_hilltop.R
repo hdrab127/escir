@@ -459,12 +459,11 @@ fetch_site <- function(m, s, htp_q, v, meta, i1) {
     # add datasource info
     res_meta <- xml2::xml_contents(xml2::xml_find_all(res, '/Hilltop/Measurement/DataSource'))
     meta_nms <- xml2::xml_name(res_meta)
-    info_idx <- which(meta_nms == 'ItemInfo')
-    res_meta <- setNames(object = as.list(c(xml2::xml_text(res_meta[-info_idx]),
+    info_idx <- meta_nms == 'ItemInfo'
+    res_meta <- setNames(object = as.list(c(xml2::xml_text(res_meta[!info_idx]),
                                             xml2::xml_text(xml2::xml_contents(res_meta[info_idx])))),
-                         nm = c(meta_nms[-info_idx],
-                                # for backward compat prepend iteminfo for now
-                                paste0('iteminfo_', xml2::xml_name(xml2::xml_contents(res_meta[info_idx])))))
+                         nm = c(meta_nms[!info_idx],
+                                xml2::xml_name(xml2::xml_contents(res_meta[info_idx]))))
     res_data <- dplyr::bind_cols(res_data, tibble::as_tibble(res_meta))
   }
   cat('\r', m, ' - ', s, crayon::green(' [complete]             '), sep = '')
@@ -482,9 +481,9 @@ single_node_to_tbl <- function(node) {
 data_node_to_tbl <- function(i, nodes) {
   node <- xml2::xml_children(nodes[[i]])
   node_nms <- xml2::xml_name(node)
-  par_idx <- which(node_nms == 'Parameter')
-  tibble::as_tibble(setNames(object = as.list(c(xml2::xml_text(node[-par_idx]),
+  par_idx <- node_nms == 'Parameter'
+  tibble::as_tibble(setNames(object = as.list(c(xml2::xml_text(node[!par_idx]),
                                                 xml2::xml_attr(node[par_idx], attr = 'Value'))),
-                             nm = c(node_nms[-par_idx],
+                             nm = c(node_nms[!par_idx],
                                     xml2::xml_attr(node[par_idx], attr = 'Name'))))
 }

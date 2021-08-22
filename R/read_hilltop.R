@@ -50,7 +50,7 @@ htp_site_list <- function(url,
   # so we can run for multiple measurements
   site_list_internal <- function(m) {
     if (length(m) == 1) {
-      q <- paste0(query, '&Measurement=', m)
+      htp_q <- paste0(query, '&Measurement=', m)
     }
 
     # get data
@@ -66,21 +66,21 @@ htp_site_list <- function(url,
       if (Location == 'Yes') {
         htp_site_list_to_tbl <- function(node) {
           x <- xml2::as_list(node)
-          dplyr::tibble(site = attr(x, 'Name'),
+          tibble::tibble(site = attr(x, 'Name'),
                         nztm_e = if (is.null(x$Easting[[1]])) NA_character_ else x$Easting[[1]],
                         nztm_n = if (is.null(x$Northing[[1]])) NA_character_ else x$Northing[[1]])
         }
       } else if (Location == 'LatLong') {
         htp_site_list_to_tbl <- function(node) {
           x <- xml2::as_list(node)
-          dplyr::tibble(site = attr(x, 'Name'),
+          tibble::tibble(site = attr(x, 'Name'),
                         lat = if (is.null(x$Latitude[[1]])) NA_character_ else x$Latitude[[1]],
                         lng = if (is.null(x$Longitude[[1]])) NA_character_ else x$Longitude[[1]])
         }
       }
     } else {
       htp_site_list_to_tbl <- function(node) {
-        dplyr::tibble(site = xml2::xml_attr(node, 'Name'))
+        tibble::tibble(site = xml2::xml_attr(node, 'Name'))
       }
     }
     # apply tidy df function to each node
@@ -181,13 +181,13 @@ htp_measurement_list <- function(url,
   measurement_list_internal <- function(s) {
     if (length(s) == 1) {
       # TODO add valid site check
-      q <- paste0(query, '&Site=', s)
+      htp_q <- paste0(query, '&Site=', s)
     } else {
-      q <- query
+      htp_q <- query
     }
 
     res <-
-      read_xml_url(q, verbose)
+      read_xml_url(htp_q, verbose)
 
     if (length(s) == 0) {
       # only keep Measurements
@@ -275,6 +275,8 @@ htp_measurement_list <- function(url,
 #'   data for the parameters requested.
 #' @param verbose boolean, whether to print the url query.
 #' @param avg_by Hilltop averaging period, i.e. '1 hour', '1 day'
+#' @param just_i1 faster parsing for continuous series
+#' @param metadata whether to return metadata like units, series type etc.
 #' @param ... Currently unused.
 #'
 #' @return A \code{tbl_df} containing the data for the sites-measurements-times
@@ -313,183 +315,80 @@ htp_get_data <- function(url,
                          tstype = NULL,
                          avg_by = NULL,
                          suppress_warnings = TRUE,
+                         just_i1 = FALSE,
+                         metadata = TRUE,
                          ...) {
-  query <-
-    paste0(url, '&Request=GetData')
+  query <- paste0(url, '&Request=GetData')
 
-
-  if (length(tstype) == 1) {
-    query <-
-      paste0(query, '&tstype=', tstype)
+  # if no dates specified hilltop returns all or default
+  if (length(From) == 0 & length(To) == 0) {
+    readline('No date range specified, this will request all data and can be slow.\nHit [Enter] to continue, or Ctrl-c to abort')
+  } else if (length(From) > 1 & length(To) > 1) {
+    stop('Multiple values are not allowed for From or To')
   }
-
-  # so we can run for multiple measures/sites
-  # ... consumes mc.cores arg if not parallel
-  get_data_internal <- function(m, s, ...) {
-    cat('\n', m, ' - ', s, crayon::yellow(' [fetching from server]'), sep = '')
-    q <- paste0(query, '&Measurement=', m)
-    q <- paste0(q, '&Site=', s)
-
-    # if no dates specified hilltop returns all or default
-    if (length(From) == 0 & length(To) == 0) {
-      readline('No date range specified, this will request all data and can be slow.\nHit [Enter] to continue, or Ctrl-c to abort')
-    } else if (length(From) > 1 & length(To) > 1) {
-      stop('Multiple values are not allowed for From or To')
-    }
-    # else if (length(From) == 0) {
-    #   stop('If To is specified, From must be also.')
-    # }
-
-    # test if inputs are valid strings if not dates.
-    valid_date_re <- '^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])$'
-    valid_datetime_re <-
-      paste0(valid_date_re,
-             '(T| ){1}',
-             '(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(.[0-9]+)?(Z)?')
-
-    if (length(From) == 1) {
-      if (is(From, 'Date') |
-          inherits(From, 'POSIXct') |
-          grepl(valid_date_re, From) |
-          grepl(valid_datetime_re, From)) {
-        # all good
-        q <-
-          paste0(q,
-                 '&From=', From)
-      } else {
-        stop('From must be a Date or POSIXct object,
+  # test if inputs are valid strings if not dates.
+  valid_date_re <- '^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])$'
+  valid_datetime_re <- paste0(valid_date_re,
+                              '(T| ){1}',
+                              '(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(.[0-9]+)?(Z)?')
+  if (length(From) == 1) {
+    if (is(From, 'Date') |
+        inherits(From, 'POSIXct') |
+        grepl(valid_date_re, From) |
+        grepl(valid_datetime_re, From)) {
+      # all good
+      query <- paste0(query, '&From=', From)
+    } else {
+      stop('From must be a Date or POSIXct object,
                or a string in the form yyyy-mm-dd or yyyy-mm-ddTHH:MM:SS respectively')
-      }
     }
-    if (length(To) == 1) {
-      if (is(To, 'Date') |
-          inherits(To, 'POSIXct') |
-          grepl(valid_date_re, To) |
-          grepl(valid_datetime_re, To)) {
-        # all good
-      } else {
-        stop('To must be a date or datetime object,
+  }
+  if (length(To) == 1) {
+    if (is(To, 'Date') |
+        inherits(To, 'POSIXct') |
+        grepl(valid_date_re, To) |
+        grepl(valid_datetime_re, To)) {
+      # all good
+    } else {
+      stop('To must be a date or datetime object,
                  or a string in the form yyyy-mm-dd or yyyy-mm-ddTHH:MM:SS respectively')
-      }
-    } else {
-      # i.e. only from specified
-      if (verbose) {
-        print('Found only \'From\' datetime, setting \'To\' to now()')
-      }
-      To <- Sys.time()
     }
-    q <-
-      paste0(q,
-             '&To=', To)
-
-    # if average, add after
-    if (!is.null(avg_by)) {
-      q <-
-        paste0(q, '&Method=Average&Interval=', avg_by)
-
+  } else {
+    # i.e. only from specified
+    if (verbose) {
+      print('Found only \'From\' datetime, setting \'To\' to now()')
     }
+    To <- Sys.time()
+  }
+  query <- paste0(query, '&To=', To)
 
-    # fetch data
-    res <-
-      read_xml_url(q, verbose)
+  # if averaging (can remove and just add to measurement user side?)
+  if (!is.null(avg_by)) {
+    query <- paste0(query, '&Method=Average&Interval=', avg_by)
 
-    # check xml errors
-    res_error <-
-      xml2::xml_find_all(res, './/Error')
-    if (length(res_error) > 0) {
-      cat('\r', m, ' - ', s, crayon::red(' [no data found]       '), sep = '')
-      return(dplyr::tibble())
-    }
-
-    # get tidy datasource table
-    res_datasource <-
-      xml2::xml_find_all(res, './/DataSource') %>%
-      single_node_to_tbl()
-    if ('iteminfo.itemname' %in% names(res_datasource)) {
-      res_datasource <-
-        res_datasource %>%
-        dplyr::rename(key = .data$iteminfo.itemname)
-    }
-
-    # get data nodes
-    res_data <-
-      xml2::xml_find_all(res, './/Data') %>%
-      xml2::xml_children()
-
-    # check has data
-    res_length <- length(res_data)
-    if (res_length == 0) {
-      cat('\r', m, ' - ', s, crayon::red(' [no data found]       '), sep = '')
-      return(dplyr::tibble())
-    }
-
-    # xml2::as_list is the slow part...
-    cat('\r', m, ' - ', s, crayon::yellow(' [processing into R]   '), sep = '')
-    res_data <-
-      res_data %>%
-      xml2::as_list() %>%
-      setNames(nm = paste0('row-', seq_len(res_length))) %>%
-      lapply(tibble::enframe) %>%
-      Filter(f = function(x) nrow(x) > 0) %>%
-      dplyr::bind_rows(.id = 'id')
-    res_values <-
-      dplyr::filter(res_data, .data$name != 'Parameter') %>%
-      tidyr::unnest(.data$value) %>%
-      tidyr::unnest(.data$value) %>%
-      tidyr::pivot_wider()
-    res_pars <-
-      dplyr::filter(res_data, .data$name == 'Parameter')
-    if (nrow(res_pars) > 0) {
-      res_pars <-
-        res_pars %>%
-        dplyr::mutate(value = purrr::map(.data$value, attributes),
-                      name = tolower(purrr::map(.data$value, 'Name')),
-                      name = gsub(' ', '_', .data$name),
-                      value = purrr::map(.data$value, 'Value')) %>%
-        tidyr::unnest(c(.data$name, .data$value)) %>%
-        dplyr::distinct() %>%
-        dplyr::group_by(.data$id, .data$name) %>%
-        dplyr::summarise(value = paste(.data$value, collapse = ';')) %>%
-        dplyr::ungroup() %>%
-        tidyr::pivot_wider()
-      res_data <-
-        dplyr::full_join(res_values, res_pars, by = 'id')
-    } else {
-      res_data <-
-        res_values
-    }
-    res_data <-
-      res_data %>%
-      dplyr::select_all(function(x) tolower(gsub(' ', '_', x))) %>%
-      dplyr::rename(timestamp = .data$`t`)
-    res_data$site <- s
-
-    # combine data with metadata
-    if (nrow(res_datasource) > 0) {
-      # rep for each row and bind cols
-      res_datasource <-
-        dplyr::select_all(res_datasource, function(x) tolower(gsub(' |\\.', '_', x)))
-      res_data <-
-        dplyr::bind_cols(res_data, res_datasource)
-    }
-    cat('\r', m, ' - ', s, crayon::green(' [complete]             '), sep = '')
-    res_data
+  }
+  if (length(tstype) == 1) {
+    query <- paste0(query, '&tstype=', tstype)
   }
 
-  # run for each site
-  get_data_measure <- function(m) {
-    dplyr::bind_rows(lapply(Site, get_data_internal, m = m))
-  }
-  site_data <-
-    lapply(Measurement, get_data_measure) %>%
-    dplyr::bind_rows()
+  # run for each measure-site
+  site_data <- dplyr::bind_rows(lapply(Measurement,
+                                       fetch_measure,
+                                       s = Site,
+                                       htp_q = query,
+                                       v = verbose,
+                                       meta = metadata,
+                                       i1 = just_i1))
+
+  # return clean table
   cat('\n')
-
   if (nrow(site_data) == 0) {
-    return(dplyr::tibble())
+    return(tibble::tibble())
+  } else {
+    dplyr::rename_with(site_data, ~ tolower(gsub(' |\\.', '_', .x))) %>%
+      dplyr::rename(timestamp = .data$`t`) %>%
+      dplyr::relocate(.data$site, .before = dplyr::everything())
   }
-  site_data %>%
-    dplyr::select(.data$site, dplyr::everything())
 }
 
 # encode and log read_xml urls
@@ -506,14 +405,86 @@ read_xml_url <- function(url_query, verbose) {
   tryCatch(xml2::read_xml(url_query),
            error = function(e) {
              print(e)
-             stop('GW Hilltop web service might be down - check your connection and try again in a minute. If this error persists please contact hayden.rabel@gw.govt.nz')
+             stop('Might be a connection issue - check you have internet and try again in a minute. If this error persists please contact hayden@saltecology.co.nz')
            })
 }
-# helper to turn xml node to tbl_df
+# so we can run for multiple measures/sites
+fetch_measure <- function(m, s, htp_q, v, meta, i1) {
+  dplyr::bind_rows(lapply(s,
+                          fetch_site,
+                          m = m,
+                          htp_q = htp_q,
+                          v = v,
+                          meta = meta,
+                          i1 = i1))
+}
+# so we can run for multiple measures/sites
+fetch_site <- function(m, s, htp_q, v, meta, i1) {
+  # finish query and fetch data
+  cat('\n', m, ' - ', s, crayon::yellow(' [fetching from server]'), sep = '')
+  htp_q <- paste0(htp_q, '&Measurement=', m)
+  htp_q <- paste0(htp_q, '&Site=', s)
+  res <- read_xml_url(htp_q, verbose = v)
+
+  # check xml errors
+  res_error <- xml2::xml_find_all(res, './/Error')
+  if (length(res_error) > 0) {
+    cat('\r', m, ' - ', s, crayon::red(' [no data found]       '), sep = '')
+    return(tibble::tibble())
+  } else {
+    cat('\r', m, ' - ', s, crayon::yellow(' [processing into R]   '), sep = '')
+  }
+  if (i1) {
+    # convert to table if just continuous i1 data
+    ts <- xml2::xml_text(xml2::xml_find_all(res, '/Hilltop/Measurement/Data/E/T'))
+    i1 <- xml2::xml_text(xml2::xml_find_all(res, '/Hilltop/Measurement/Data/E/I1'))
+    if (length(i1) == 0) {
+      cat('\r', m, ' - ', s, crayon::red(' [no data found]       '), sep = '')
+      return(tibble::tibble())
+    }
+    res_data <- tibble::tibble(t = ts, i1 = i1, site = s, .rows = length(ts))
+
+  } else {
+    # convert to table with parameters/unknown value names
+    res_nodes <- xml2::xml_find_all(res, '/Hilltop/Measurement/Data/E')
+    if (length(res_nodes) == 0) {
+      cat('\r', m, ' - ', s, crayon::red(' [no data found]       '), sep = '')
+      return(tibble::tibble())
+    }
+    res_data <- lapply(seq_along(res_nodes), data_node_to_tbl, nodes = res_nodes)
+    res_data <- dplyr::bind_rows(res_data)
+    res_data$site <- s
+  }
+  if (meta) {
+    # add datasource info
+    res_meta <- xml2::xml_contents(xml2::xml_find_all(res, '/Hilltop/Measurement/DataSource'))
+    meta_nms <- xml2::xml_name(res_meta)
+    info_idx <- which(meta_nms == 'ItemInfo')
+    res_meta <- setNames(object = as.list(c(xml2::xml_text(res_meta[-info_idx]),
+                                            xml2::xml_text(xml2::xml_contents(res_meta[info_idx])))),
+                         nm = c(meta_nms[-info_idx],
+                                # for backward compat prepend iteminfo for now
+                                paste0('iteminfo_', xml2::xml_name(xml2::xml_contents(res_meta[info_idx])))))
+    res_data <- dplyr::bind_cols(res_data, tibble::as_tibble(res_meta))
+  }
+  cat('\r', m, ' - ', s, crayon::green(' [complete]             '), sep = '')
+  res_data
+}
+# helpers to turn xml node to tbl_df
 single_node_to_tbl <- function(node) {
   xml2::as_list(node) %>%
     unlist() %>%
     as.list() %>%
     dplyr::as_tibble() %>%
     dplyr::select_all(tolower)
+}
+# FASTER helpers to turn xml node to tbl_df
+data_node_to_tbl <- function(i, nodes) {
+  node <- xml2::xml_children(nodes[[i]])
+  node_nms <- xml2::xml_name(node)
+  par_idx <- which(node_nms == 'Parameter')
+  tibble::as_tibble(setNames(object = as.list(c(xml2::xml_text(node[-par_idx]),
+                                                xml2::xml_attr(node[par_idx], attr = 'Value'))),
+                             nm = c(node_nms[-par_idx],
+                                    xml2::xml_attr(node[par_idx], attr = 'Name'))))
 }

@@ -14,6 +14,8 @@ htp_get_data(
   tstype = NULL,
   avg_by = NULL,
   suppress_warnings = TRUE,
+  just_i1 = FALSE,
+  metadata = TRUE,
   ...
 )
 }
@@ -38,6 +40,10 @@ examples.}
 
 \item{suppress_warnings}{TRUE (default) hides warnings for when there is no
 data for the parameters requested.}
+
+\item{just_i1}{faster parsing for continuous series}
+
+\item{metadata}{whether to return metadata like units, series type etc.}
 
 \item{...}{Currently unused.}
 }

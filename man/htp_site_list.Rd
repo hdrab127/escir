@@ -4,13 +4,7 @@
 \alias{htp_site_list}
 \title{Get site lists}
 \usage{
-htp_site_list(
-  url,
-  Location = c("Yes", "LatLong"),
-  Measurement = NULL,
-  verbose = FALSE,
-  ...
-)
+htp_site_list(url, Location = NULL, Measurement = NULL, verbose = FALSE)
 }
 \arguments{
 \item{url}{Hilltop webservice url, this points to the desired .hts file.}
@@ -21,28 +15,29 @@ and longitude. NULL returns no location columns.}
 \item{Measurement}{Filter to only sites with this measurement.}
 
 \item{verbose}{boolean, whether to print the url query.}
-
-\item{...}{Currently unused.}
 }
 \value{
-A \code{tbl_df} containing the site names and metadata.
+A \code{tbl_df} containing the site names and locations/measurements
+  if requested
 }
 \description{
 \code{htp_site_list} fetches site names and metadata from Hilltop
 }
 \examples{
 \dontrun{
-htp_site_list('http://hilltop.gw.govt.nz/data.hts?Service=Hilltop',
-              Location = 'LatLong')
-#> # A tibble: 3,099 x 3
-#>  site                                     lat   lng
-#>  <chr>                                  <dbl> <dbl>
-#>  292611                                  NA     NA
-#>  29818                                   NA     NA
-#>  Abbots Creek at D/S Donalds Crk Conf   -41.2  175.
-#>  Abbots Creek at Featherston            -41.1  175.
-#>  Abbots Creek at Lake Shore             -41.2  175.
-#>  Abbots Creek at SH2 Bridge             -41.1  175.
-#>  ...
+# get hilltop web service url to desired data file
+htp_url <- 'http://hilltop.{COUNCIL_ABBR}.govt.nz/{DATA_FILE}.hts?Service=Hilltop'
+
+htp_site_list(htp_url)
+htp_site_list(htp_url, Location = 'Yes')
+htp_site_list(htp_url, Location = 'LatLong')
+
+htp_site_list(htp_url, Measurement = c('E-Coli'))
+htp_site_list(htp_url, Location = 'Yes', Measurement = c('E-Coli'))
+htp_site_list(htp_url, Location = 'LatLong', Measurement = c('E-Coli'))
+
+htp_site_list(htp_url, Measurement = c('E-Coli', 'Rainfall'))
+htp_site_list(htp_url, Location = 'Yes', Measurement = c('E-Coli', 'Rainfall'))
+htp_site_list(htp_url, Location = 'LatLong', Measurement = c('E-Coli', 'Rainfall'))
 }
 }

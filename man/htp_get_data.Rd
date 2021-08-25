@@ -13,10 +13,8 @@ htp_get_data(
   verbose = FALSE,
   tstype = NULL,
   avg_by = NULL,
-  suppress_warnings = TRUE,
   just_i1 = FALSE,
-  metadata = TRUE,
-  ...
+  metadata = TRUE
 )
 }
 \arguments{
@@ -36,16 +34,15 @@ examples.}
 
 \item{tstype}{if StdQualSeries required.}
 
-\item{avg_by}{Hilltop averaging period, i.e. '1 hour', '1 day'}
-
-\item{suppress_warnings}{TRUE (default) hides warnings for when there is no
-data for the parameters requested.}
+\item{avg_by}{Hilltop averaging period, i.e. '1 hour', '1 day', will be
+deprecated in future. Better to include this with the measurement name
+i.e, Measurement = 'Flow&Method=Average&Interval=1 day$Align=1 day etc.
+See https://www.hbrc.govt.nz/assets/Document-Library/Council-Data/20170426-HilltopServerTrimmed.pdf
+for info on averaging methods like extrema and total.}
 
 \item{just_i1}{faster parsing for continuous series}
 
 \item{metadata}{whether to return metadata like units, series type etc.}
-
-\item{...}{Currently unused.}
 }
 \value{
 A \code{tbl_df} containing the data for the sites-measurements-times
@@ -57,19 +54,24 @@ A \code{tbl_df} containing the data for the sites-measurements-times
 }
 \examples{
 \dontrun{
-htp_get_data('http://hilltop.gw.govt.nz/data.hts?Service=Hilltop',
-             Site = 'Owhiro Bay',
+# get hilltop web service url to desired data file
+htp_url <- 'http://hilltop.{COUNCIL_ABBR}.govt.nz/{DATA_FILE}.hts?Service=Hilltop'
+
+# discrete data
+htp_get_data(htp_url,
+             Site = 'SITEA',
              From = '2019-03-01',
              To = '2019-07-01',
              Measurement = 'Enterococci Bacteria')
-#> [1] "Enterococci Bacteria - Owhiro Bay"
-#> # A tibble: 4 x 22
-#> site  timestamp           value lab sample num~ method gwrc programme
-#> <chr> <dttm>              <chr> <chr>            <chr>  <chr>
-#> Owhi~ 2019-03-04 11:20:00 12    19/10788-21      Enter~ Rec WQ
-#> Owhi~ 2019-03-11 11:15:00 4     19/11079-21      Enter~ Rec WQ
-#> Owhi~ 2019-03-18 10:34:00 4     19/12378-21      Enter~ Rec WQ
-#> Owhi~ 2019-03-25 11:02:00 24    19/13658-21      Enter~ Rec WQ
-#> # ... with 16 more variables
+
+# add just_i1 for continuous data for much faster results
+# metadata false is already know units etc.
+htp_get_data(htp_url,
+             Site = 'SITEB',
+             From = '2019-03-01',
+             To = '2019-07-01',
+             Measurement = 'Conductivity (TC)',
+             just_i1 = TRUE,
+             metadata = FALSE)
 }
 }

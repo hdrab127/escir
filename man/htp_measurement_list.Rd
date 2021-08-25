@@ -4,7 +4,7 @@
 \alias{htp_measurement_list}
 \title{Get measurement information for sites}
 \usage{
-htp_measurement_list(url, Site = NULL, verbose = FALSE, ...)
+htp_measurement_list(url, Site = NULL, verbose = FALSE)
 }
 \arguments{
 \item{url}{Hilltop webservice url, this points to the desired .hts file.}
@@ -12,8 +12,6 @@ htp_measurement_list(url, Site = NULL, verbose = FALSE, ...)
 \item{Site}{Hilltop site name/s to query.}
 
 \item{verbose}{boolean, whether to print the url query.}
-
-\item{...}{Currently unused.}
 }
 \value{
 A \code{tbl_df} containing the sites and measurement metadata.
@@ -24,11 +22,11 @@ requested.
 }
 \examples{
 \dontrun{
-htp_measurement_list('http://hilltop.gw.govt.nz/data.hts?Service=Hilltop',
-                     Site = 'Abbots Creek at Featherston')
-#> # A tibble: 1 x 7
-#> inactive northing firstsynonym   recordingauthor~ comment     metnumber easting
-#> <chr>    <chr>    <chr>          <chr>            <chr>       <chr>     <chr>
-#> 0        5445581  Abbots Creek ~ GW-Eastern       "Site name~ D15131    1795280
+# get hilltop web service url to desired data file
+htp_url <- 'http://hilltop.{COUNCIL_ABBR}.govt.nz/{DATA_FILE}.hts?Service=Hilltop'
+
+htp_measurement_list(htp_url)
+htp_measurement_list(htp_url, 'SITEA')
+htp_measurement_list(htp_url, c('SITEA', 'SITEB'))
 }
 }

@@ -4,7 +4,7 @@
 \alias{htp_site_info}
 \title{Get information for a single site}
 \usage{
-htp_site_info(url, Site, verbose = FALSE, ...)
+htp_site_info(url, Site, verbose = FALSE)
 }
 \arguments{
 \item{url}{Hilltop webservice url, this points to the desired .hts file.}
@@ -12,8 +12,6 @@ htp_site_info(url, Site, verbose = FALSE, ...)
 \item{Site}{Hilltop site name to query.}
 
 \item{verbose}{boolean, whether to print the url query.}
-
-\item{...}{Currently unused.}
 }
 \value{
 A \code{tbl_df} containing the site metadata.
@@ -24,11 +22,10 @@ A \code{tbl_df} containing the site metadata.
 }
 \examples{
 \dontrun{
-htp_site_info('http://hilltop.gw.govt.nz/data.hts?Service=Hilltop',
-              Site = 'Abbots Creek at Featherston')
-#> # A tibble: 1 x 7
-#> inactive northing firstsynonym  recordingaut~ comment          metnumber easting
-#> <chr>    <chr>    <chr>         <chr>         <chr>            <chr>     <chr>
-#> 0        5445581  Abbots Creek~ GW-Eastern    "Site named \"F~ D15131    1795280
+# get hilltop web service url to desired data file
+htp_url <- 'http://hilltop.{COUNCIL_ABBR}.govt.nz/{DATA_FILE}.hts?Service=Hilltop'
+
+# check available sites using htp_site_list
+htp_site_info(htp_url, 'SITE NAME')
 }
 }

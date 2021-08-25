@@ -7,95 +7,78 @@
 #'   and longitude. NULL returns no location columns.
 #' @param Measurement Filter to only sites with this measurement.
 #' @param verbose boolean, whether to print the url query.
-#' @param ... Currently unused.
 #'
-#' @return A \code{tbl_df} containing the site names and metadata.
+#' @return A \code{tbl_df} containing the site names and locations/measurements
+#'   if requested
 #'
 #' @importFrom rlang .data
+#' @importFrom stats setNames
 #'
 #' @examples
 #' \dontrun{
-#' htp_site_list('http://hilltop.gw.govt.nz/data.hts?Service=Hilltop',
-#'               Location = 'LatLong')
-#' #> # A tibble: 3,099 x 3
-#' #>  site                                     lat   lng
-#' #>  <chr>                                  <dbl> <dbl>
-#' #>  292611                                  NA     NA
-#' #>  29818                                   NA     NA
-#' #>  Abbots Creek at D/S Donalds Crk Conf   -41.2  175.
-#' #>  Abbots Creek at Featherston            -41.1  175.
-#' #>  Abbots Creek at Lake Shore             -41.2  175.
-#' #>  Abbots Creek at SH2 Bridge             -41.1  175.
-#' #>  ...
+#' # get hilltop web service url to desired data file
+#' htp_url <- 'http://hilltop.{COUNCIL_ABBR}.govt.nz/{DATA_FILE}.hts?Service=Hilltop'
+#'
+#' htp_site_list(htp_url)
+#' htp_site_list(htp_url, Location = 'Yes')
+#' htp_site_list(htp_url, Location = 'LatLong')
+#'
+#' htp_site_list(htp_url, Measurement = c('E-Coli'))
+#' htp_site_list(htp_url, Location = 'Yes', Measurement = c('E-Coli'))
+#' htp_site_list(htp_url, Location = 'LatLong', Measurement = c('E-Coli'))
+#'
+#' htp_site_list(htp_url, Measurement = c('E-Coli', 'Rainfall'))
+#' htp_site_list(htp_url, Location = 'Yes', Measurement = c('E-Coli', 'Rainfall'))
+#' htp_site_list(htp_url, Location = 'LatLong', Measurement = c('E-Coli', 'Rainfall'))
 #' }
 #' @export
 htp_site_list <- function(url,
-                          Location = c('Yes', 'LatLong'),
+                          Location = NULL,
                           Measurement = NULL,
-                          verbose = FALSE,
-                          ...) {
-  query <-
-    paste0(url, '&Request=SiteList')
-
-  if (length(Location) == 1) {
-    if (Location %in% c('Yes', 'LatLong')) {
-      query <- paste0(query, '&Location=', Location)
-    } else {
-      stop('Location if specified must be one of c(\'Yes\', \'LatLong\')')
-    }
-  } else if (length(Location) > 1) {
-    stop('Location if specified must be ONE of c(\'Yes\', \'LatLong\')')
+                          verbose = FALSE) {
+  # prep query and test params
+  query <- paste0(url, '&Request=SiteList')
+  loc_nms <- c('site')
+  if (length(Location) > 1) {
+    stop('Location if specified must be one of \'Yes\' or \'LatLong\'')
+  }
+  if (!is.null(Location)) {
+    query <- paste0(query, '&Location=', Location)
+    if (Location == 'Yes') loc_nms <- c(loc_nms, 'nztm_e', 'nztm_n')
+    if (Location == 'LatLong') loc_nms <- c(loc_nms, 'lat', 'lng')
   }
 
-  # so we can run for multiple measurements
+  # for each measurement
   site_list_internal <- function(m) {
-    if (length(m) == 1) {
+    # finish query and fetch xml
+    if (!is.null(m)) {
       htp_q <- paste0(query, '&Measurement=', m)
+    } else {
+      htp_q <- paste0(query)
     }
-
-    # get data
-    res <-
-      read_xml_url(query, verbose)
+    res <- read_xml_url(htp_q, verbose)
 
     # only keep site (drop agency and version)
-    res <-
-      xml2::xml_find_all(res, './/Site')
-
-    # build tidy dataframe depending on locations
-    if (length(Location) == 1) {
-      if (Location == 'Yes') {
-        htp_site_list_to_tbl <- function(node) {
-          x <- xml2::as_list(node)
-          tibble::tibble(site = attr(x, 'Name'),
-                        nztm_e = if (is.null(x$Easting[[1]])) NA_character_ else x$Easting[[1]],
-                        nztm_n = if (is.null(x$Northing[[1]])) NA_character_ else x$Northing[[1]])
-        }
-      } else if (Location == 'LatLong') {
-        htp_site_list_to_tbl <- function(node) {
-          x <- xml2::as_list(node)
-          tibble::tibble(site = attr(x, 'Name'),
-                        lat = if (is.null(x$Latitude[[1]])) NA_character_ else x$Latitude[[1]],
-                        lng = if (is.null(x$Longitude[[1]])) NA_character_ else x$Longitude[[1]])
-        }
-      }
-    } else {
-      htp_site_list_to_tbl <- function(node) {
+    res <- xml2::xml_find_all(res, '/HilltopServer/Site')
+    res_data <- lapply(seq_along(res), function(i) {
+      node <- res[i]
+      if (xml2::xml_length(node) > 0) {
+        node_data <- xml2::xml_children(node)
+        tibble::as_tibble(setNames(object = as.list(c(xml2::xml_attr(node, 'Name'),
+                                                      xml2::xml_text(node_data))),
+                                   nm = loc_nms))
+      } else {
         tibble::tibble(site = xml2::xml_attr(node, 'Name'))
       }
-    }
-    # apply tidy df function to each node
-    lapply(res, htp_site_list_to_tbl) %>%
-      dplyr::bind_rows() %>%
-      # convert location vars (if there) to numeric
-      dplyr::mutate_at(dplyr::vars(-1L), as.double)
+    })
+    res_data <- dplyr::bind_rows(res_data)
+    res_data <- dplyr::mutate(res_data, dplyr::across(-.data$site, as.double))
+    res_data$requestas <- m
+    res_data
   }
   if (length(Measurement) > 0) {
     # run for each measurement
-    lapply(Measurement,
-           site_list_internal) %>%
-      stats::setNames(nm = Measurement) %>%
-      dplyr::bind_rows(.id = 'requestas')
-
+    dplyr::bind_rows(lapply(Measurement, site_list_internal))
   } else {
     # run just once
     site_list_internal(m = NULL)
@@ -110,40 +93,33 @@ htp_site_list <- function(url,
 #' @param url Hilltop webservice url, this points to the desired .hts file.
 #' @param Site Hilltop site name to query.
 #' @param verbose boolean, whether to print the url query.
-#' @param ... Currently unused.
 #'
 #' @return A \code{tbl_df} containing the site metadata.
 #'
 #' @examples
 #' \dontrun{
-#' htp_site_info('http://hilltop.gw.govt.nz/data.hts?Service=Hilltop',
-#'               Site = 'Abbots Creek at Featherston')
-#' #> # A tibble: 1 x 7
-#' #> inactive northing firstsynonym  recordingaut~ comment          metnumber easting
-#' #> <chr>    <chr>    <chr>         <chr>         <chr>            <chr>     <chr>
-#' #> 0        5445581  Abbots Creek~ GW-Eastern    "Site named \"F~ D15131    1795280
+#' # get hilltop web service url to desired data file
+#' htp_url <- 'http://hilltop.{COUNCIL_ABBR}.govt.nz/{DATA_FILE}.hts?Service=Hilltop'
+#'
+#' # check available sites using htp_site_list
+#' htp_site_info(htp_url, 'SITE NAME')
 #' }
 #' @export
 htp_site_info <- function(url,
                           Site,
-                          verbose = FALSE,
-                          ...) {
-  query <-
-    paste0(url, '&Request=SiteInfo')
-  query <-
-    paste0(query, '&Site=', Site)
+                          verbose = FALSE) {
+  # prep query and fetch data
+  query <- paste0(url,
+                  '&Request=SiteInfo',
+                  '&Site=', Site)
+  res <- read_xml_url(query, verbose)
 
-  # get data
-  res <-
-    read_xml_url(query, verbose)
-
-  # only keep site
-  res <-
-    xml2::xml_find_all(res, './/Site')
-
-  # build tidy dataframe
-  # flatten then arrange
-  single_node_to_tbl(res)
+  # parse site data into tbl
+  res <- xml2::xml_find_all(res, '/HilltopServer/Site')
+  res_data <- xml2::xml_children(res)
+  tibble::as_tibble(setNames(as.list(c(xml2::xml_attr(res, 'Name'),
+                                       xml2::xml_text(res_data))),
+                             c('site', xml2::xml_name(res_data))))
 }
 
 #' Get measurement information for sites
@@ -154,98 +130,76 @@ htp_site_info <- function(url,
 #' @param url Hilltop webservice url, this points to the desired .hts file.
 #' @param Site Hilltop site name/s to query.
 #' @param verbose boolean, whether to print the url query.
-#' @param ... Currently unused.
 #'
 #' @return A \code{tbl_df} containing the sites and measurement metadata.
 #'
-#' @importFrom magrittr `%>%`
+#' @importFrom stats setNames
 #'
 #' @examples
 #' \dontrun{
-#' htp_measurement_list('http://hilltop.gw.govt.nz/data.hts?Service=Hilltop',
-#'                      Site = 'Abbots Creek at Featherston')
-#' #> # A tibble: 1 x 7
-#' #> inactive northing firstsynonym   recordingauthor~ comment     metnumber easting
-#' #> <chr>    <chr>    <chr>          <chr>            <chr>       <chr>     <chr>
-#' #> 0        5445581  Abbots Creek ~ GW-Eastern       "Site name~ D15131    1795280
+#' # get hilltop web service url to desired data file
+#' htp_url <- 'http://hilltop.{COUNCIL_ABBR}.govt.nz/{DATA_FILE}.hts?Service=Hilltop'
+#'
+#' htp_measurement_list(htp_url)
+#' htp_measurement_list(htp_url, 'SITEA')
+#' htp_measurement_list(htp_url, c('SITEA', 'SITEB'))
 #' }
 #' @export
 htp_measurement_list <- function(url,
                                  Site = NULL,
-                                 verbose = FALSE,
-                                 ...) {
-  query <-
-    paste0(url, '&Request=MeasurementList')
-
-  # so we can have multiple sites
-  measurement_list_internal <- function(s) {
-    if (length(s) == 1) {
-      # TODO add valid site check
-      htp_q <- paste0(query, '&Site=', s)
-    } else {
-      htp_q <- query
-    }
-
-    res <-
-      read_xml_url(htp_q, verbose)
-
-    if (length(s) == 0) {
-      # only keep Measurements
-      res <-
-        xml2::xml_find_all(res, './/Measurement')
-
-      # and output as sorted vector
-      sapply(res, function(node) {
-        xml2::xml_attr(node, 'Name')
-      }, simplify = 'vector') %>%
-        sort()
-
-    } else {
-      # only keep data sources
-      res <-
-        xml2::xml_find_all(res, './/DataSource')
-
-      # tidy each node to dataframe
-      lapply(res, function(node) {
-        # each node can have multiple measurement nodes
-        measures <-
-          xml2::xml_find_all(node, './/Measurement') %>%
-          lapply(single_node_to_tbl) %>%
-          dplyr::bind_rows()
-
-        # get rest of data
-        x <- xml2::as_list(node)
-        x <- x[-which(names(x) == 'Measurement')]
-
-        # add site and contents
-        x <-
-          list(site = xml2::xml_attr(node, 'Site'), x) %>%
-          unlist() %>%
-          as.list() %>%
-          dplyr::as_tibble()
-
-        if (nrow(measures) > 0) {
-          # rep for each row of measurements and bind cols
-          dplyr::as_tibble(cbind(x, measures))
-        } else {
-          x
-        }
-      }) %>%
-        dplyr::bind_rows() %>%
-        dplyr::select_all(tolower)
-    }
-  }
-
+                                 verbose = FALSE) {
+  # prep query
+  query <- paste0(url, '&Request=MeasurementList')
   if (length(Site) > 0) {
     # run for each site
-    # TODO parallelise for Windows
-    lapply(Site, measurement_list_internal) %>%
-      dplyr::bind_rows()
+    res <- lapply(Site, function(s) {
+      # finish query and fetch data
+      cat(s, crayon::yellow(' [fetching from server]'), sep = '')
+      htp_q <- paste0(query, '&Site=', s)
+      res_site <- read_xml_url(htp_q, verbose)
+      cat('\r', s, crayon::yellow(' [processing into R]   '), sep = '')
+      res_site <- xml2::xml_find_all(res_site, '/HilltopServer/DataSource')
+
+      # parse each node
+      site_data <- lapply(seq_along(res_site), function(i) {
+        node <- res_site[i]
+        node_data <- xml2::xml_children(node)
+        node_nms <- xml2::xml_name(node_data)
+        msr_nodes <- xml2::xml_find_all(node, 'Measurement')
+        msr_idx <- node_nms == 'Measurement'
+        node_data <- tibble::as_tibble(setNames(object = as.list(c(s,
+                                                                   xml2::xml_text(node_data[!msr_idx]))),
+                                                nm = c('site',
+                                                       node_nms[!msr_idx])))
+
+        # parse each measure
+        msr_data <- lapply(seq_along(msr_nodes), function(j) {
+          msr_node <- xml2::xml_children(msr_nodes[j])
+          tibble::as_tibble(setNames(object = as.list(xml2::xml_text(msr_node)),
+                                     nm = c(xml2::xml_name(msr_node))))
+        })
+
+        # combine
+        dplyr::bind_cols(node_data, dplyr::bind_rows(msr_data))
+      })
+      site_data <- dplyr::bind_rows(site_data)
+      cat('\r', s, crayon::green(' [complete]             '), '\n', sep = '')
+      site_data
+    })
+    res <- dplyr::bind_rows(res)
+    res <- dplyr::rename_with(res, ~ tolower(gsub(' |\\.', '_', .x)))
 
   } else {
     # run once
-    measurement_list_internal(s = NULL)
+    s <- 'All sites (this may take awhile)'
+    cat(s, crayon::yellow(' [fetching from server]'), sep = '')
+    res <- read_xml_url(query, verbose)
+    cat('\r', s, crayon::yellow(' [processing into R]   '), sep = '')
+    res <- xml2::xml_find_all(res, '/HilltopServer/Measurement')
+    res <- tibble::tibble(requestas = xml2::xml_attr(res, 'Name'))
+    cat('\r', s, crayon::green(' [complete]             '), '\n', sep = '')
   }
+  res
 }
 
 # get time range
@@ -271,13 +225,14 @@ htp_measurement_list <- function(url,
 #'   examples.
 #' @param To time of last measurement to get, see From format.
 #' @param tstype if StdQualSeries required.
-#' @param suppress_warnings TRUE (default) hides warnings for when there is no
-#'   data for the parameters requested.
 #' @param verbose boolean, whether to print the url query.
-#' @param avg_by Hilltop averaging period, i.e. '1 hour', '1 day'
+#' @param avg_by Hilltop averaging period, i.e. '1 hour', '1 day', will be
+#'   deprecated in future. Better to include this with the measurement name
+#'   i.e, Measurement = 'Flow&Method=Average&Interval=1 day$Align=1 day etc.
+#'   See https://www.hbrc.govt.nz/assets/Document-Library/Council-Data/20170426-HilltopServerTrimmed.pdf
+#'   for info on averaging methods like extrema and total.
 #' @param just_i1 faster parsing for continuous series
 #' @param metadata whether to return metadata like units, series type etc.
-#' @param ... Currently unused.
 #'
 #' @return A \code{tbl_df} containing the data for the sites-measurements-times
 #'   requested.
@@ -286,24 +241,28 @@ htp_measurement_list <- function(url,
 #' @importFrom tidyr pivot_wider
 #' @importFrom methods is
 #' @importFrom stats setNames
-#' @importFrom magrittr `%>%`
 #'
 #' @examples
 #' \dontrun{
-#' htp_get_data('http://hilltop.gw.govt.nz/data.hts?Service=Hilltop',
-#'              Site = 'Owhiro Bay',
+#' # get hilltop web service url to desired data file
+#' htp_url <- 'http://hilltop.{COUNCIL_ABBR}.govt.nz/{DATA_FILE}.hts?Service=Hilltop'
+#'
+#' # discrete data
+#' htp_get_data(htp_url,
+#'              Site = 'SITEA',
 #'              From = '2019-03-01',
 #'              To = '2019-07-01',
 #'              Measurement = 'Enterococci Bacteria')
-#' #> [1] "Enterococci Bacteria - Owhiro Bay"
-#' #> # A tibble: 4 x 22
-#' #> site  timestamp           value lab sample num~ method gwrc programme
-#' #> <chr> <dttm>              <chr> <chr>            <chr>  <chr>
-#' #> Owhi~ 2019-03-04 11:20:00 12    19/10788-21      Enter~ Rec WQ
-#' #> Owhi~ 2019-03-11 11:15:00 4     19/11079-21      Enter~ Rec WQ
-#' #> Owhi~ 2019-03-18 10:34:00 4     19/12378-21      Enter~ Rec WQ
-#' #> Owhi~ 2019-03-25 11:02:00 24    19/13658-21      Enter~ Rec WQ
-#' #> # ... with 16 more variables
+#'
+#' # add just_i1 for continuous data for much faster results
+#' # metadata false is already know units etc.
+#' htp_get_data(htp_url,
+#'              Site = 'SITEB',
+#'              From = '2019-03-01',
+#'              To = '2019-07-01',
+#'              Measurement = 'Conductivity (TC)',
+#'              just_i1 = TRUE,
+#'              metadata = FALSE)
 #' }
 #' @export
 htp_get_data <- function(url,
@@ -314,10 +273,8 @@ htp_get_data <- function(url,
                          verbose = FALSE,
                          tstype = NULL,
                          avg_by = NULL,
-                         suppress_warnings = TRUE,
                          just_i1 = FALSE,
-                         metadata = TRUE,
-                         ...) {
+                         metadata = TRUE) {
   query <- paste0(url, '&Request=GetData')
 
   # if no dates specified hilltop returns all or default
@@ -385,17 +342,17 @@ htp_get_data <- function(url,
   if (nrow(site_data) == 0) {
     return(tibble::tibble())
   } else {
-    dplyr::rename_with(site_data, ~ tolower(gsub(' |\\.', '_', .x))) %>%
-      dplyr::rename(timestamp = .data$`t`) %>%
-      dplyr::relocate(.data$site, .before = dplyr::everything())
+    site_data <- dplyr::rename_with(site_data, ~ tolower(gsub(' |\\.', '_', .x)))
+    site_data <- dplyr::rename(site_data, timestamp = .data$`t`)
+    site_data <- dplyr::relocate(site_data, .data$site, .before = dplyr::everything())
+    site_data
   }
 }
 
 # encode and log read_xml urls
 read_xml_url <- function(url_query, verbose) {
   # encode as url query
-  url_query <-
-    utils::URLencode(url_query)
+  url_query <- utils::URLencode(url_query)
 
   # downloard and parse
   if (verbose) {
@@ -442,6 +399,7 @@ fetch_site <- function(m, s, htp_q, v, meta, i1) {
       cat('\r', m, ' - ', s, crayon::red(' [no data found]       '), sep = '')
       return(tibble::tibble())
     }
+    # TODO: if diff length ts and i1, fallback to safer method below
     res_data <- tibble::tibble(t = ts, i1 = i1, site = s, .rows = length(ts))
 
   } else {
@@ -470,14 +428,6 @@ fetch_site <- function(m, s, htp_q, v, meta, i1) {
   res_data
 }
 # helpers to turn xml node to tbl_df
-single_node_to_tbl <- function(node) {
-  xml2::as_list(node) %>%
-    unlist() %>%
-    as.list() %>%
-    dplyr::as_tibble() %>%
-    dplyr::select_all(tolower)
-}
-# FASTER helpers to turn xml node to tbl_df
 data_node_to_tbl <- function(i, nodes) {
   node <- xml2::xml_children(nodes[[i]])
   node_nms <- xml2::xml_name(node)

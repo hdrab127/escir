@@ -432,8 +432,18 @@ data_node_to_tbl <- function(i, nodes) {
   node <- xml2::xml_children(nodes[[i]])
   node_nms <- xml2::xml_name(node)
   par_idx <- node_nms == 'Parameter'
-  tibble::as_tibble(setNames(object = as.list(c(xml2::xml_text(node[!par_idx]),
-                                                xml2::xml_attr(node[par_idx], attr = 'Value'))),
-                             nm = c(node_nms[!par_idx],
-                                    xml2::xml_attr(node[par_idx], attr = 'Name'))))
+  tryCatch(tibble::as_tibble(setNames(object = as.list(c(xml2::xml_text(node[!par_idx]),
+                                                         xml2::xml_attr(node[par_idx], attr = 'Value'))),
+                                      nm = c(node_nms[!par_idx],
+                                             xml2::xml_attr(node[par_idx], attr = 'Name'))),
+                             .name_repair = suffix_duped_names)
+           , error = function(e) browser())
+}
+suffix_duped_names <- function(nms) {
+  check <- rle(nms)$lengths
+  dupes <- which(check > 1)
+  if (length(dupes) > 0) {
+    nms[dupes + 1] <- paste0(nms[dupes + 1], '_', check[dupes])
+  }
+  nms
 }

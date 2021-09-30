@@ -211,7 +211,7 @@ escir_datatable <- function(d,
           c(col_list,
             list(list(title = column_name,
                       type = 'fix-order')))
-      } else if (column_name == 'Plan target') {
+      } else if (column_name == 'Draft plan target') {
         col_list <-
           c(col_list,
             list(list(title = column_name,

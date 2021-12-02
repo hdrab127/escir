@@ -140,7 +140,7 @@ escir_datatable <- function(d,
     list(dom = 't',
          deferRender = TRUE,
          # container width - vert scrollbar width
-         scrollX = 1170 - 17,
+         scrollX = TRUE,
          scrollCollapse = TRUE,
          paging = FALSE,
          scroller = TRUE,

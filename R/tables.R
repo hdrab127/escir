@@ -16,6 +16,9 @@
 #'   (i.e. when a column has detection limits or states appended)
 #' @param cols_nonsortable character vector of column names to disable sorting
 #'   buttons
+#' @param cols_custom_sort named list or vector of column name = sort fn. These
+#'   sorting functions must extend $.extend($.fn.dataTable.ext.type.order, see
+#'   https://datatables.net/manual/plug-ins/sorting.
 #' @param col_widths named list or vector of column name = width, i.e.
 #'   list('Date' = '82px', 'Site' = '120px'). Use this if you need to stop a
 #'   column from text wrapping
@@ -25,47 +28,17 @@
 #'
 #' @section Notes:
 #'
-#' These columns are hidden by default:
-#' \itemize{
-#'   \item{key}
-#'   \item{lng}
-#'   \item{lat}
-#'   \item{legend_colour}
-#'   \item{fill_colour}
-#'   \item{all_labels}
-#'   \item{all_colours}
-#'   \item{p_labs}
-#'   \item{colour}
-#'   \item{weight}
-#'   \item{radius}
-#'   \item{p_colours}
-#'   \item{site_code}
-#'   \item{map_label}
-#'   \item{map_popup}
-#'   \item{below_det}
-#'   \item{survey_group}
-#' }
+#'   These columns are hidden by default: \itemize{ \item{key} \item{lng}
+#'   \item{lat} \item{legend_colour} \item{fill_colour} \item{all_labels}
+#'   \item{all_colours} \item{p_labs} \item{colour} \item{weight} \item{radius}
+#'   \item{p_colours} \item{site_code} \item{map_label} \item{map_popup}
+#'   \item{below_det} \item{survey_group} }
 #'
-#' These columns are left aligned by default:
-#' \itemize{
-#'   \item{Whaitua}
-#'   \item{Site code}
-#'   \item{Site}
-#'   \item{Catchment}
-#'   \item{Area}
-#'   \item{Event}
-#'   \item{Duration}
-#'   \item{Site name}
-#'   \item{Date}
-#'   \item{Rainfall station}
-#'   \item{Season}
-#'   \item{Flows}
-#'   \item{Land use}
-#'   \item{Soil order}
-#'   \item{Soil type}
-#'   \item{Lake}
-#'   \item{Type}
-#' }
+#'   These columns are left aligned by default: \itemize{ \item{Whaitua}
+#'   \item{Site code} \item{Site} \item{Catchment} \item{Area} \item{Event}
+#'   \item{Duration} \item{Site name} \item{Date} \item{Rainfall station}
+#'   \item{Season} \item{Flows} \item{Land use} \item{Soil order} \item{Soil
+#'   type} \item{Lake} \item{Type} }
 #'
 #' @importFrom magrittr `%>%`
 #'
@@ -78,6 +51,7 @@ escir_datatable <- function(d,
                             cols_to_hide = c(),
                             cols_to_left_align = c(),
                             cols_to_fix_order = c(),
+                            cols_custom_sort = list(),
                             cols_nonsortable = c(),
                             col_widths = list(),
                             col_colours = list(),
@@ -203,7 +177,7 @@ escir_datatable <- function(d,
   }
 
   # fix sorting on string value columns if any
-  if (length(cols_to_fix_order) > 0) {
+  if (length(cols_to_fix_order) + length(cols_custom_sort) > 0) {
     col_list <- list()
     for (column_name in names(d_raw)) {
       if (column_name %in% cols_to_fix_order) {
@@ -216,6 +190,11 @@ escir_datatable <- function(d,
           c(col_list,
             list(list(title = column_name,
                       type = 'plan-order')))
+      } else if (column_name %in% names(cols_custom_sort)) {
+        col_list <-
+          c(col_list,
+            list(list(title = column_name,
+                      type = cols_custom_sort[[column_name]])))
       } else {
         col_list <-
           c(col_list,

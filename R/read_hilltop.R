@@ -72,7 +72,7 @@ htp_site_list <- function(url,
       }
     })
     res_data <- dplyr::bind_rows(res_data)
-    res_data <- dplyr::mutate(res_data, dplyr::across(-.data$site, as.double))
+    res_data <- dplyr::mutate(res_data, dplyr::across(-site, as.double))
     res_data$requestas <- m
     res_data
   }
@@ -342,28 +342,10 @@ htp_get_data <- function(url,
   if (nrow(site_data) == 0) {
     return(tibble::tibble())
   } else {
-    site_data <- dplyr::rename_with(site_data, ~ tolower(gsub(' |\\.', '_', .x)))
-    site_data <- dplyr::rename(site_data, timestamp = .data$`t`)
-    site_data <- dplyr::relocate(site_data, .data$site, .before = dplyr::everything())
+    site_data <- dplyr::rename(site_data, timestamp = `t`)
+    site_data <- dplyr::relocate(site_data, site, .before = dplyr::everything())
     site_data
   }
-}
-
-# encode and log read_xml urls
-read_xml_url <- function(url_query, verbose) {
-  # encode as url query
-  url_query <- utils::URLencode(url_query)
-
-  # downloard and parse
-  if (verbose) {
-    print(paste0('Fetching: ', url_query))
-  }
-  # catch service down HTTP error 503 codes
-  tryCatch(xml2::read_xml(url_query),
-           error = function(e) {
-             print(e)
-             stop('Might be a connection issue - check you have internet and try again in a minute. If this error persists please contact hayden@saltecology.co.nz')
-           })
 }
 # so we can run for multiple measures/sites
 fetch_measure <- function(m, s, htp_q, v, meta, i1) {
@@ -432,18 +414,38 @@ data_node_to_tbl <- function(i, nodes) {
   node <- xml2::xml_children(nodes[[i]])
   node_nms <- xml2::xml_name(node)
   par_idx <- node_nms == 'Parameter'
-  tryCatch(tibble::as_tibble(setNames(object = as.list(c(xml2::xml_text(node[!par_idx]),
-                                                         xml2::xml_attr(node[par_idx], attr = 'Value'))),
-                                      nm = c(node_nms[!par_idx],
-                                             xml2::xml_attr(node[par_idx], attr = 'Name'))),
-                             .name_repair = suffix_duped_names)
-           , error = function(e) browser())
+  d <- as.list(c(xml2::xml_text(node[!par_idx]),
+                 xml2::xml_attr(node[par_idx], attr = 'Value')))
+  nms <- c(node_nms[!par_idx],
+           xml2::xml_attr(node[par_idx], attr = 'Name'))
+  nms <- tolower(gsub(' |\\.', '_', nms))
+  tibble::as_tibble(setNames(d, nms), .name_repair = suffix_duped_names)
 }
 suffix_duped_names <- function(nms) {
-  check <- rle(nms)$lengths
-  dupes <- which(check > 1)
-  if (length(dupes) > 0) {
-    nms[dupes + 1] <- paste0(nms[dupes + 1], '_', check[dupes])
+  check <- table(nms)
+  repeats <- check[check > 1]
+  for (nm in names(repeats)) {
+    idx <- which(nms == nm)
+    nms[idx] <- paste0(nms[idx], '_', seq_along(idx))
   }
   nms
+}
+# encode and log read_xml urls
+read_xml_url <- function(url_query, verbose) {
+  # encode as url query
+  url_query <- utils::URLencode(url_query)
+
+  # downloard and parse
+  if (verbose) {
+    print(paste0('Fetching: ', url_query))
+  }
+  # catch service down HTTP error 503 codes, allow one retry
+  res <- try(xml2::read_xml(url_query), silent = TRUE)
+  if (inherits(res, 'try-error')) {
+    res <- try(xml2::read_xml(url_query), silent = TRUE)
+  }
+  if (inherits(res, 'try-error')) {
+    stop(res[[1]], '\nMight be a connection issue - check you have internet and try again in a minute. If this error persists please contact hayden@saltecology.co.nz')
+  }
+  res
 }

@@ -72,7 +72,7 @@ htp_site_list <- function(url,
       }
     })
     res_data <- dplyr::bind_rows(res_data)
-    res_data <- dplyr::mutate(res_data, dplyr::across(-site, as.double))
+    res_data <- dplyr::mutate(res_data, dplyr::across(-.data$site, as.double))
     res_data$requestas <- m
     res_data
   }
@@ -343,7 +343,7 @@ htp_get_data <- function(url,
     return(tibble::tibble())
   } else {
     site_data <- dplyr::rename(site_data, timestamp = `t`)
-    site_data <- dplyr::relocate(site_data, site, .before = dplyr::everything())
+    site_data <- dplyr::relocate(site_data, .data$site, .before = dplyr::everything())
     site_data
   }
 }

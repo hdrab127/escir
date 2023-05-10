@@ -400,11 +400,14 @@ fetch_site <- function(m, s, htp_q, v, meta, i1) {
     res_meta <- xml2::xml_contents(xml2::xml_find_all(res, '/Hilltop/Measurement/DataSource'))
     meta_nms <- xml2::xml_name(res_meta)
     info_idx <- meta_nms == 'ItemInfo'
-    res_meta <- setNames(object = as.list(c(xml2::xml_text(res_meta[!info_idx]),
-                                            xml2::xml_text(xml2::xml_contents(res_meta[info_idx])))),
-                         nm = c(meta_nms[!info_idx],
-                                xml2::xml_name(xml2::xml_contents(res_meta[info_idx]))))
-    res_data <- dplyr::bind_cols(res_data, tibble::as_tibble(res_meta))
+    meta_nms <- c(meta_nms[!info_idx],
+                  xml2::xml_name(xml2::xml_contents(res_meta[info_idx])))
+    meta_nms <- tolower(gsub(' |\\.', '_', meta_nms))
+    res_meta <- c(xml2::xml_text(res_meta[!info_idx]),
+                  xml2::xml_text(xml2::xml_contents(res_meta[info_idx])))
+    res_meta <- tibble::as_tibble(setNames(as.list(res_meta), meta_nms),
+                                  .name_repair = suffix_duped_names)
+    res_data <- dplyr::bind_cols(res_data, res_meta)
   }
   cat('\r', m, ' - ', s, crayon::green(' [complete]             '), sep = '')
   res_data

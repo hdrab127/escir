@@ -117,6 +117,9 @@ htp_site_info <- function(url,
   # parse site data into tbl
   res <- xml2::xml_find_all(res, '/HilltopServer/Site')
   res_data <- xml2::xml_children(res)
+  if (length(res_data) == 0) {
+    return(NULL)
+  }
   tibble::as_tibble(setNames(as.list(c(xml2::xml_attr(res, 'Name'),
                                        xml2::xml_text(res_data))),
                              c('site', xml2::xml_name(res_data))))

@@ -72,6 +72,9 @@ htp_site_list <- function(url,
       }
     })
     res_data <- dplyr::bind_rows(res_data)
+    if (nrow(res_data) == 0) {
+      return(NULL)
+    }
     res_data <- dplyr::mutate(res_data, dplyr::across(-.data$site, as.double))
     res_data$requestas <- m
     res_data
